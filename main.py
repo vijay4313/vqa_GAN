@@ -31,6 +31,26 @@ def getCheckpointPath(epoch=None):
         return os.path.abspath(CHECKPOINT_ROOT + "weights_{}".format(epoch))
 
 
+def getAvgPastWeights(currTheta, prevTheta, counter):
+    # currThetaVal = currTheta
+    # prevThetaVal = prevTheta
+    # Note that each grad_and_vars looks like the following:
+    #   ((grad0_gpu0, var0_gpu0), ... , (grad0_gpuN, var0_gpuN))
+    grad = (tf.add(tf.multiply(prevTheta, counter),
+                   currTheta) / (counter + 1.0))
+        # Keep in mind that the Variables are redundant because they are shared
+        # across towers. So .. we will just return the first tower's pointer to
+        # the Variable.
+    return grad
+
+
+def getRegularizationLoss(currTheta, prevTheta):
+    regLoss = 0.0
+    for currW, prevW in zip(currTheta, prevTheta):
+        regLoss += tf.reduce_sum(tf.pow(tf.subtract(currW, prevW), 2))
+    return regLoss
+
+
 def train(quesVec, posImg, negImg, VOCAB_SIZE,
           EMBED_SIZE, QUES_SIZE, IMG_SHAPE,
           DISC_LR=1e-4, GEN_LR=1e-3, GEN_BETA1=0.9, GEN_BETA2=0.999):
@@ -53,16 +73,39 @@ def train(quesVec, posImg, negImg, VOCAB_SIZE,
                                             posImgEmbeds,
                                             negImgEmbeds)
     # regularize
+    genVars = [var for var in
+               tf.trainable_variables() if var.name.startswith('gen_')]
+    discVars = [var for var in
+                tf.trainable_variables() if var.name.startswith('disc_')]
+
+    prevGenVars = [tf.placeholder('float32', currTheta.get_shape().as_list())
+                   for currTheta in genVars]
+
+    prevDiscVars = [tf.placeholder('float32', currTheta.get_shape().as_list())
+                    for currTheta in discVars]
+
+    genRegLoss = getRegularizationLoss(genVars, prevGenVars)
+    discRegLoss = getRegularizationLoss(discVars, prevDiscVars)
+
+    # prevGenVars = [sess.run(getAvgPastWeights(currTheta,
+    # prevGenVar,
+    # counter=genCounter))
+    # for currTheta, prevGenVar in zip(genVars,
+    # prevGenVars)]
+
+    genLosswReg = genLoss + genRegLoss
+    discLosswReg = discLoss + discRegLoss
 
     discOptimizer = tf.train.GradientDescentOptimizer(
-                                                    DISC_LR).minimize(discLoss)
+        DISC_LR).minimize(discLosswReg)
 
     genOptimizer = tf.train.AdamOptimizer(
         learning_rate=GEN_LR,
         beta1=GEN_BETA1,
-        beta2=GEN_BETA2).minimize(genLoss)
+        beta2=GEN_BETA2).minimize(genLosswReg)
 
-    return (discOptimizer, discLoss, genOptimizer, genLoss, genImgdata)
+    return (discOptimizer, discLosswReg, genOptimizer, genLosswReg,
+            genImgdata, prevGenVars, prevDiscVars)
 
 
 def run():
@@ -85,13 +128,13 @@ def run():
     valData = TFDataLoaderUtil('/media/venkatraman/D/thesis/data', 'val2014')
     valBatches = valData.genDataBatchesIds(BATCH_SIZE=BATCH_SIZE)
 
-    config = tf.ConfigProto(log_device_placement=True)
+    config = tf.ConfigProto(log_device_placement=False)
     config.gpu_options.allow_growth = True
     sess = tf.Session(config=config)
     quesVec = tf.placeholder('float32', [None, MAX_QUES_PAD_LEN])
     posImg = tf.placeholder('float32', [None, ]+list(IMG_SHAPE))
     negImg = tf.placeholder('float32', [None, ]+list(IMG_SHAPE))
-    discOptimizer, discLoss, genOptimizer, genLoss, _ = train(
+    discOptimizer, discLosswReg, genOptimizer, genLosswReg, _, prevGenVars, prevDiscVars = train(
         quesVec, posImg, negImg, VOCAB_SIZE,
         EMBED_SIZE, MAX_QUES_PAD_LEN, IMG_SHAPE)
 
@@ -100,6 +143,16 @@ def run():
     saver = tf.train.Saver()
 
     start = 0
+
+    genCounter, discCounter = 0, 0
+
+    genVars = [var for var in
+               tf.trainable_variables() if var.name.startswith('gen_')]
+    discVars = [var for var in
+                tf.trainable_variables() if var.name.startswith('disc_')]
+
+    prevGenVarsVal = [sess.run(tf.zeros_like(foo)) for foo in genVars]
+    prevDiscVarsVal = [sess.run(tf.zeros_like(bar)) for bar in discVars]
     # saver.restore(s, get_checkpoint_path(epoch=start))
 
     for epoch in tqdm(range(start, NUM_EPOCHS)):
@@ -108,6 +161,7 @@ def run():
         _valGenLoss = 0.0
         _valDiscLoss = 0.0
         counter = 0
+
         # subValBatches = np.random.choice(valBatches, 2048, replace=False)
 
         for trainBatch in tqdm(trainBatches):
@@ -124,26 +178,68 @@ def run():
             # print(batchImgs.shape)
             # print(batchCompImgs.shape)
 
-            feedDict = {
+            for i in range(5):
+
+                feedDictGen = {key: val for key, val in zip(prevGenVars,
+                                                            prevGenVarsVal)}
+                feedDictGen.update({
+                    quesVec: batchQuesEncPadded,
+                    posImg: batchImgs,
+                    negImg: batchCompImgs
+                })
+
+                _trainGenLoss += sess.run(genLosswReg,
+                                          feed_dict=feedDictGen)
+
+                prevGenVarsVal = [sess.run(getAvgPastWeights(currTheta,
+                                                             prevGenVar,
+                                                             counter=genCounter),
+                                           feed_dict=feedDictGen)
+                                  for currTheta, prevGenVar in zip(genVars,
+                                                                   prevGenVars)]
+                sess.run(genOptimizer, feed_dict=feedDictGen)
+                genCounter += 1
+
+            feedDictDisc = {key: val for key, val in zip(prevDiscVars,
+                                                         prevDiscVarsVal)}
+            feedDictDisc.update({
                 quesVec: batchQuesEncPadded,
                 posImg: batchImgs,
                 negImg: batchCompImgs
-            }
+            })
 
-            for i in range(5):
-                _trainDiscLoss += sess.run([discOptimizer, discLoss],
-                                           feed_dict=feedDict)[1]
+            _trainDiscLoss += sess.run(discLosswReg,
+                                       feed_dict=feedDictDisc)
 
-            _trainGenLoss += sess.run([genOptimizer, genLoss],
-                                      feed_dict=feedDict)[1]
+            prevDiscVarsVal = [sess.run(getAvgPastWeights(currTheta,
+                                                          prevDiscVar,
+                                                          counter=discCounter),
+                                     feed_dict=feedDictDisc)
+                               for currTheta, prevDiscVar in zip(discVars,
+                                                                 prevDiscVars)]
+            sess.run(discOptimizer, feed_dict=feedDictDisc)
+            discCounter += 1
+
+            if counter % 5 == 0:
+                print('='*50)
+                print('Epoch: ' + str(epoch) + ' Batch: ' + str(counter))
+                print('train: Disc loss: {}, Gen loss: {}'.format(_trainDiscLoss,
+                                                                  _trainGenLoss))
+            counter += 1
 
         _trainDiscLoss /= float(len(trainBatches))
-        _trainGenLoss /= float(len(trainBatches))
+        _trainGenLoss /= float(len(trainBatches)) * 5
 
         print('='*50)
         print('Epoch: ' + str(epoch))
         print('train: Disc loss: {}, Gen loss: {}'.format(_trainDiscLoss,
                                                           _trainGenLoss))
+
+        feedDictDisc = {key: val for key, val in zip(prevDiscVars,
+                                                     prevDiscVarsVal)}
+
+        feedDictGen = {key: val for key, val in zip(prevGenVars,
+                                                    prevGenVarsVal)}
 
         for valBatch in valBatches:
             batchTriplets = valData.getQuesImageCompTriplets(valBatch)
@@ -153,15 +249,23 @@ def run():
             batchQuesEncPadded = quesEncoder.batch_questions_to_matrix(
                 batchQuesEncodings, MAX_QUES_PAD_LEN)
 
-            feedDict = {
+            feedDictDisc.update({
                 quesVec: batchQuesEncPadded,
                 posImg: batchImgs,
                 negImg: batchCompImgs
-            }
+            })
 
-            _valDiscLoss += sess.run(discLoss, feed_dict=feedDict)
+            feedDictGen.update({
+                quesVec: batchQuesEncPadded,
+                posImg: batchImgs,
+                negImg: batchCompImgs
+            })
 
-            _valGenLoss += sess.run(genLoss, feed_dict=feedDict)
+            _valDiscLoss += sess.run(discLosswReg,
+                                     feed_dict=feedDictDisc)
+
+            _valGenLoss += sess.run(genLosswReg,
+                                    feed_dict=feedDictGen)
 
         _valDiscLoss /= float(len(valBatches))
         _valGenLoss /= float(len(valBatches))
