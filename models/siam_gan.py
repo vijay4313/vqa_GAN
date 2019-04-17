@@ -28,35 +28,35 @@ class SiamGan(object):
 
         generator.add(L.Reshape((16, 16, 10), name='gen_reshape'))
         generator.add(L.Conv2DTranspose(16, kernel_size=(9, 9),
-                                        activation='elu', name='gen_Conv9_1'))
+                                        activation='relu', name='gen_Conv9_1'))
         generator.add(L.Conv2DTranspose(16, kernel_size=(9, 9),
-                                        activation='elu', name='gen_Conv9_2'))
+                                        activation='relu', name='gen_Conv9_2'))
         generator.add(L.Conv2DTranspose(16, kernel_size=(9, 9),
-                                        activation='elu', name='gen_Conv9_3'))
+                                        activation='relu', name='gen_Conv9_3'))
         generator.add(L.Conv2DTranspose(16, kernel_size=(9, 9),
-                                        activation='elu', name='gen_Conv9_4'))
+                                        activation='relu', name='gen_Conv9_4'))
         generator.add(L.UpSampling2D(size=(2, 2), name='gen_upsample1'))
 
         generator.add(L.Conv2DTranspose(16, kernel_size=(7, 7),
-                                        activation='elu', name='gen_Conv7_1'))
+                                        activation='relu', name='gen_Conv7_1'))
         generator.add(L.Conv2DTranspose(16, kernel_size=(7, 7),
-                                        activation='elu', name='gen_Conv7_2'))
+                                        activation='relu', name='gen_Conv7_2'))
         generator.add(L.UpSampling2D(size=(2, 2), name='gen_upsample2'))
 
         generator.add(L.Conv2DTranspose(8, kernel_size=(5, 5),
-                                        activation='elu', name='gen_Conv5_1'))
+                                        activation='relu', name='gen_Conv5_1'))
         generator.add(L.Conv2DTranspose(8, kernel_size=(5, 5),
-                                        activation='elu', name='gen_Conv5_2'))
+                                        activation='relu', name='gen_Conv5_2'))
         generator.add(L.UpSampling2D(size=(2, 2), name='gen_upsample3'))
         generator.add(L.Conv2DTranspose(8, kernel_size=(3, 3),
-                                        activation='elu', name='gen_Conv3_1'))
+                                        activation='relu', name='gen_Conv3_1'))
         generator.add(L.Conv2DTranspose(8, kernel_size=(3, 3),
-                                        activation='elu', name='gen_Conv3_2'))
+                                        activation='relu', name='gen_Conv3_2'))
 
         generator.add(L.Conv2D(8, kernel_size=3,
                                activation='relu', name='gen_Conv3_3'))
         generator.add(L.Conv2D(3, kernel_size=3,
-                               activation=None, name='gen_Conv3_4'))
+                               activation='tanh', name='gen_Conv3_4'))
 
         return generator
 
@@ -69,10 +69,12 @@ class SiamGan(object):
                                                name='disc_batch_norm'))
         discriminator.add(L.Conv2D(4, kernel_size=(5, 5),
                                    padding='same',
-                                   activation='relu', name='disc_Conv5_1'))
+                                   activation=None, name='disc_Conv5_1'))
+        discriminator.add(L.LeakyReLU(alpha=0.1))
         discriminator.add(L.Conv2D(4, kernel_size=(5, 5),
                                    padding='same',
-                                   activation='relu', name='disc_Conv5_2'))
+                                   activation=None, name='disc_Conv5_2'))
+        discriminator.add(L.LeakyReLU(alpha=0.1))
         discriminator.add(L.SpatialDropout2D(0.5))
         discriminator.add(L.MaxPooling2D(pool_size=(2, 2),
                                          strides=(2, 2),
@@ -80,10 +82,12 @@ class SiamGan(object):
 
         discriminator.add(L.Conv2D(4, kernel_size=(3, 3),
                                    padding='same',
-                                   activation='relu', name='disc_Conv3_1'))
+                                   activation=None, name='disc_Conv3_1'))
+        discriminator.add(L.LeakyReLU(alpha=0.1))
         discriminator.add(L.Conv2D(4,  kernel_size=(3, 3),
                                    padding='same',
-                                   activation='relu', name='disc_Conv3_2'))
+                                   activation=None, name='disc_Conv3_2'))
+        discriminator.add(L.LeakyReLU(alpha=0.1))
         discriminator.add(L.SpatialDropout2D(0.5))
         discriminator.add(L.MaxPooling2D(pool_size=(2, 2),
                                          strides=(2, 2),
@@ -91,8 +95,10 @@ class SiamGan(object):
 
         discriminator.add(L.Conv2D(8, kernel_size=(3, 3), padding='same',
                                    activation='relu', name='disc_Conv3_3'))
+        discriminator.add(L.LeakyReLU(alpha=0.1))
         discriminator.add(L.Conv2D(8, kernel_size=(3, 3), padding='same',
-                                   activation='relu', name='disc_Conv3_4'))
+                                   activation=None, name='disc_Conv3_4'))
+        discriminator.add(L.LeakyReLU(alpha=0.1))
         discriminator.add(L.SpatialDropout2D(0.5))
         discriminator.add(L.MaxPooling2D(pool_size=(2, 2),
                                          strides=(2, 2),
@@ -100,11 +106,13 @@ class SiamGan(object):
 
         discriminator.add(L.Conv2D(16, kernel_size=(3, 3), padding='same',
                                    activation='relu', name='disc_Conv3_5'))
+        discriminator.add(L.LeakyReLU(alpha=0.1))
         discriminator.add(L.MaxPooling2D(pool_size=(2, 2),
                                          strides=(2, 2),
                                          name='disc_max_pool_4'))
         discriminator.add(L.Conv2D(32, kernel_size=(3, 3), padding='same',
-                                   activation='relu', name='disc_Conv3_6'))
+                                   activation=None, name='disc_Conv3_6'))
+        discriminator.add(L.LeakyReLU(alpha=0.1))
         discriminator.add(L.SpatialDropout2D(0.5))
         discriminator.add(L.AveragePooling2D(pool_size=(2, 2),
                                              strides=(2, 2),
@@ -112,7 +120,8 @@ class SiamGan(object):
 
         discriminator.add(L.Flatten())
         discriminator.add(L.Dropout(0.5))
-        discriminator.add(L.Dense(2048, activation='relu', name='disc_dense1'))
+        discriminator.add(L.Dense(2048, activation=None, name='disc_dense1'))
+        discriminator.add(L.LeakyReLU(alpha=0.1))
 
         return discriminator
 
@@ -145,9 +154,9 @@ class SiamGan(object):
         Implementation of the triplet loss
 
         Arguments:
-        anchor -- the encodings for the anchor images, of shape (None, 128)
-        positive -- the encodings for the positive images, of shape (None, 128)
-        negative -- the encodings for the negative images, of shape (None, 128)
+        anchor -- the encodings for the anchor images, of shape (None, 2048)
+        positive -- the encodings for the positive images of shape (None, 2048)
+        negative -- the encodings for the negative images of shape (None, 2048)
 
         Returns:
         (loss, genLoss) -- tuple of real number, value of the
@@ -168,6 +177,7 @@ class SiamGan(object):
         genLoss = tf.reduce_mean(pos_dist)
 
         return (loss, genLoss)
+
 
 # =============================================================================
 
