@@ -308,8 +308,8 @@ class TFDataLoaderUtil:
             compImgSet.append(compImg)
 
         return (np.asarray(quesSet),
-                np.asarray(imgSet) / 255,
-                np.asarray(compImgSet) / 255)
+                ((np.asarray(imgSet) / 127.5) - 1.0),
+                ((np.asarray(compImgSet) / 127.5) - 1.0))
 
     def genTFDatasetObject(self, tokenizer, MAX_LEN, BATCH_SIZE,
                            NUM_PARALLEL_CALLS, BUFFER_SIZE):

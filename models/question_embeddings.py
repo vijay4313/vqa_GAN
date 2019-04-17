@@ -9,9 +9,10 @@ import re
 import itertools as it
 from collections import Counter
 import numpy as np
-#import tensorflow as tf
+# import tensorflow as tf
 from tensorflow.keras.models import Sequential
 from tensorflow.keras import layers as L
+
 
 class QuestionProcessor:
     def __init__(self, vocab: dict = {}):
@@ -46,7 +47,6 @@ class QuestionProcessor:
         vocab.extend([self.PAD, self.UNK, self.START, self.END])
         self.vocab = {token: index for index, token in enumerate(sorted(vocab))}
 
-
     def index_generator_per_question(self, question):
         """
         Return the indices for each token in a single question
@@ -63,8 +63,8 @@ class QuestionProcessor:
             tokenized_question.append(self.vocab[self.END])
             return tokenized_question
         else:
-           raise Exception('First initialize the vocabulary to \
-                           generate a BoW representation')
+            raise Exception('First initialize the vocabulary to \
+                            generate a BoW representation')
 
     def batch_question_to_token_indices(self, questions):
         """
@@ -100,30 +100,39 @@ class QuestionProcessor:
         Try to use numpy, we need this function to be fast!
         """
         if max_len is None:
-          max_len = max(map(len, batch_captions))
-  
+            max_len = max(map(len, batch_captions))
+
         temp_matrix = []
         for caption in batch_captions:
-          if len(caption) < max_len:
-            np_caption = np.array(caption)
-            temp_matrix.append(np.pad(np_caption, (0, max_len - len(caption)),
-                                      'constant', constant_values=self.vocab[self.PAD]))
-          else:
-            temp_matrix.append(np.array(caption)[:max_len])
+            if len(caption) < max_len:
+                np_caption = np.array(caption)
+                temp_matrix.append(np.pad(np_caption,
+                                          (0, max_len - len(caption)),
+                                          'constant',
+                                          constant_values=self.vocab[self.PAD]))
+            else:
+                temp_matrix.append(np.array(caption)[:max_len])
         matrix = np.array(temp_matrix)
         return matrix
+
 
 class QuestionEmbedding(object):
     def __init__(self):
         pass
-    
-    def stackedLSTMWordEmbedding(self, vocab_size, embed_size, INP_SIZE, WORD_EMBED_BOOL=True, LSTM_UNITS=512, OP_UNITS=2048):
+
+    def stackedLSTMWordEmbedding(self, vocab_size, embed_size, INP_SIZE,
+                                 WORD_EMBED_BOOL=True,
+                                 LSTM_UNITS=512, OP_UNITS=2048):
         model = Sequential()
-        model.add(L.InputLayer([INP_SIZE]))
+        model.add(L.InputLayer([INP_SIZE], name='gen_Embed_input'))
         if WORD_EMBED_BOOL:
-            model.add(L.Embedding(vocab_size, embed_size))
-        model.add(L.LSTM(LSTM_UNITS, return_sequences = True))
-        model.add(L.LSTM(LSTM_UNITS, return_sequences = False))
-        model.add(L.Dense(OP_UNITS, activation='elu'))
+            model.add(L.Embedding(vocab_size, embed_size,
+                                  name='gen_Embed_embeddings'))
+        model.add(L.LSTM(LSTM_UNITS, return_sequences=True,
+                         name='gen_Embed_LSTM_1'))
+        model.add(L.LSTM(LSTM_UNITS, return_sequences=False,
+                         name='gen_Embed_LSTM_2'))
+        model.add(L.Dense(OP_UNITS, activation='elu',
+                          name='gen_Embed_Dense_1'))
 
         return model
